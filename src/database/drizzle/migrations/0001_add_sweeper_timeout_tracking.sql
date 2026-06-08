@@ -1,0 +1,2 @@
+ALTER TABLE "tasks" ADD COLUMN "expires_at" timestamp with time zone;--> statement-breakpoint
+CREATE INDEX "tasks_sweeper_idx" ON "tasks" USING btree ("expires_at") WHERE "tasks"."status" = 'PROCESSING';
