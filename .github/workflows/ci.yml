@@ -37,7 +37,7 @@ jobs:
         run: pnpm format:check
 
       - name: Check linting
-        run: pnpm lint:check
+        run: pnpm lint
 
       - name: Type check
         run: pnpm typecheck
