@@ -1,6 +1,6 @@
 /**
  * Generic payload for a job pushed into the queue.
- * `name` — unique discriminator used by workers to filter relevant jobs.
+ * `name` - unique discriminator used by workers to filter relevant jobs.
  */
 export interface QueueJob<T = unknown> {
   name: string
@@ -25,4 +25,6 @@ export interface QueueConfig {
   port: number
   password?: string | undefined
   db?: number | undefined
+  clusterMode?: boolean
+  clusterNodes?: string | undefined
 }

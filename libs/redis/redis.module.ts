@@ -16,6 +16,8 @@ export interface RedisModuleOptions {
   port: number
   password?: string
   db?: number
+  clusterMode?: boolean
+  clusterNodes?: string
 }
 
 export interface RedisModuleAsyncOptions {

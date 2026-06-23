@@ -14,6 +14,8 @@ export interface AppConfig {
     port: number
     password: string | undefined
     db: number
+    clusterMode: boolean
+    clusterNodes: string | undefined
   }
   rateLimit: {
     enabled: boolean
@@ -24,7 +26,7 @@ export interface AppConfig {
 /**
  * Parses and validates process.env via EnvSchema.
  * Throws with a full issue list if any variable is missing or malformed.
- * Called once at module load time in AppModule — result passed to ConfigProviderModule.
+ * Called once at module load time in AppModule - result passed to ConfigProviderModule.
  */
 export function appConfig(): AppConfig {
   // Load .env file natively in Node.js >= 20.12.0
@@ -32,7 +34,7 @@ export function appConfig(): AppConfig {
   try {
     process.loadEnvFile()
   } catch {
-    // No .env present — expected in containerised environments
+    // No .env present - expected in containerised environments
   }
 
   const env = EnvSchema.parse(process.env)
@@ -49,6 +51,8 @@ export function appConfig(): AppConfig {
       port: env.REDIS_PORT,
       password: env.REDIS_PASSWORD,
       db: env.REDIS_DB,
+      clusterMode: env.REDIS_CLUSTER_MODE,
+      clusterNodes: env.REDIS_CLUSTER_NODES,
     },
     rateLimit: {
       enabled: env.RATE_LIMIT_ENABLED,
