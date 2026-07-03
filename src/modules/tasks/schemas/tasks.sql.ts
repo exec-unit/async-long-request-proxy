@@ -10,12 +10,13 @@ import {
   check,
 } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
+import { createInsertSchema, createSelectSchema } from 'drizzle-zod'
 
 // ---------------------------------------------------------------------------
 // State machine
 // ---------------------------------------------------------------------------
 
-/** All valid task lifecycle states — mirrored by a DB CHECK constraint. */
+/** All valid task lifecycle states - mirrored by a DB CHECK constraint. */
 export const TASK_STATUSES = [
   'PENDING',
   'PROCESSING',
@@ -145,8 +146,11 @@ export const tasks = pgTable(
 )
 
 // ---------------------------------------------------------------------------
-// Inferred types — use these in repositories and services
+// Inferred types - use these in repositories and services
 // ---------------------------------------------------------------------------
 
 export type TaskInsert = typeof tasks.$inferInsert
 export type TaskSelect = typeof tasks.$inferSelect
+
+export const insertTaskSchema = createInsertSchema(tasks)
+export const selectTaskSchema = createSelectSchema(tasks)
