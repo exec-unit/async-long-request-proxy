@@ -1,16 +1,18 @@
 import { Module } from '@nestjs/common'
 import { TasksRepository } from '../tasks/tasks.repository.js'
-import { EventsRepository } from '../delivery/events.repository.js'
 import { CallbackAuthGuard } from './guards/callback-auth.guard.js'
 import { ExecutorService } from './executor.service.js'
 import { ExecutorController } from './executor.controller.js'
+import { DeliveryModule } from '../delivery/delivery.module.js'
 
 /**
- * API-specific module for the Executor domain.
- * Contains only HTTP controllers and their dependencies.
+ * Imports DeliveryModule to share the EventsRepository singleton
+ * already registered there — avoids a duplicate provider instance
+ * that would break NestJS DI scope semantics.
  */
 @Module({
+  imports: [DeliveryModule],
   controllers: [ExecutorController],
-  providers: [TasksRepository, EventsRepository, CallbackAuthGuard, ExecutorService],
+  providers: [TasksRepository, CallbackAuthGuard, ExecutorService],
 })
 export class ExecutorModule {}

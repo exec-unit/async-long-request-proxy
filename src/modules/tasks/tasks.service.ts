@@ -5,6 +5,7 @@ import { IdempotencyService } from '#libs/idempotency/index.js'
 import { QUEUE_ADAPTER } from '#libs/queue/index.js'
 import type { IQueueAdapter } from '#libs/queue/index.js'
 import { Inject } from '@nestjs/common'
+import { RedisService } from '#libs/redis/index.js'
 import type { CreateTaskDto, TaskCreatedResponseDto } from './dto/tasks.dto.js'
 import type { TaskSelect } from './schemas/tasks.sql.js'
 
@@ -26,13 +27,13 @@ export class TasksService {
   constructor(
     private readonly tasksRepo: TasksRepository,
     private readonly idempotency: IdempotencyService,
+    private readonly redis: RedisService,
     @Inject(QUEUE_ADAPTER) private readonly queue: IQueueAdapter,
   ) {}
 
   async create(dto: CreateTaskDto, baseUrl: string): Promise<TaskCreatedResponseDto> {
     const { idempotencyKey } = dto
 
-    // --- Idempotency check (fast path) ---
     if (idempotencyKey) {
       const slot = await this.idempotency.occupySlot(
         idempotencyKey,
@@ -63,22 +64,20 @@ export class TasksService {
         cancelUrl: dto.cancelUrl,
         webhookUrl: dto.webhookUrl,
         timeoutSeconds: dto.timeoutSeconds,
+        expiresAt: new Date(Date.now() + dto.timeoutSeconds * 1000),
         idempotencyKey: dto.idempotencyKey,
-        // Generated once and stored; the worker embeds it in the Authorization header.
-        // The executor must present it back when pushing results - never logged or
-        // returned to clients.
         callbackToken: randomUUID(),
       })
     } catch (error) {
       // Release the slot so the next retry can attempt creation cleanly.
       if (idempotencyKey) {
-        await this.idempotency.releaseSlot(idempotencyKey)
+        await this.idempotency.releaseSlot(idempotencyKey).catch((e: unknown) => {
+          this.logger.error(`Failed to release idempotency slot`, e)
+        })
       }
       throw error
     }
 
-    // attempts=1: prevents BullMQ from re-dispatching a job that has already
-    // transitioned the task to PROCESSING (double-execution guard).
     try {
       await this.queue.enqueue(
         DISPATCH_QUEUE,
@@ -93,9 +92,19 @@ export class TasksService {
         `Failed to enqueue dispatch for task ${task.id}, rolling back`,
         error instanceof Error ? error.stack : String(error),
       )
-      await this.tasksRepo.deleteById(task.id)
-      if (idempotencyKey) {
-        await this.idempotency.releaseSlot(idempotencyKey)
+      try {
+        await this.tasksRepo.deleteById(task.id)
+      } catch (rollbackErr) {
+        this.logger.error(
+          `Rollback failed for task ${task.id}`,
+          rollbackErr instanceof Error ? rollbackErr.stack : String(rollbackErr),
+        )
+      } finally {
+        if (idempotencyKey) {
+          await this.idempotency.releaseSlot(idempotencyKey).catch((e: unknown) => {
+            this.logger.error(`Failed to release idempotency slot for task ${task.id}`, e)
+          })
+        }
       }
       throw error
     }
@@ -114,16 +123,11 @@ export class TasksService {
     return task
   }
 
-  /** Cancels a PENDING task directly. Worker notifies executors for PROCESSING tasks via cancelUrl. */
+  /** Cancels a PENDING or PROCESSING task. Publishes 'cancelled' event for SSE consumers. */
   async cancel(id: string): Promise<void> {
-    const updatedTask = await this.tasksRepo.updateStatus(
-      id,
-      ['PENDING', 'PROCESSING'],
-      'CANCELLED',
-      { completedAt: new Date() },
-    )
+    const result = await this.tasksRepo.cancelTask(id)
 
-    if (!updatedTask) {
+    if (!result) {
       // Task was not PENDING/PROCESSING or doesn't exist. Fetch it to give an accurate error.
       const currentTask = await this.tasksRepo.findById(id)
       if (!currentTask) throw new NotFoundException(`Task ${id} not found`)
@@ -133,9 +137,12 @@ export class TasksService {
       )
     }
 
-    // cancelUrl notification is best-effort: executor receives it async
-    // via cancel.processor.
-    if (updatedTask.cancelUrl) {
+    const { task, event } = result
+
+    // Notify live SSE clients.
+    await this.redis.client.publish(`task:${id}`, JSON.stringify(event))
+
+    if (task.cancelUrl) {
       await this.queue.enqueue('cancel', { name: 'cancel', data: { taskId: id } })
     }
 
