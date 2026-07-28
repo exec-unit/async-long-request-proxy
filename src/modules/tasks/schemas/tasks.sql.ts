@@ -110,7 +110,7 @@ export const tasks = pgTable(
     // Hot partial index for the timeout sweeper.
     index('tasks_sweeper_idx')
       .on(t.expiresAt)
-      .where(sql`${t.status} = 'PROCESSING'`),
+      .where(sql`${t.status} IN ('PENDING', 'PROCESSING')`),
 
     uniqueIndex('tasks_idempotency_key_idx')
       .on(t.idempotencyKey)
