@@ -8,6 +8,8 @@ import { RedisModule } from '#libs/redis/index.js'
 import { QueueModule } from '#libs/queue/index.js'
 import { HttpRetryModule } from '#libs/http-retry/index.js'
 import { ExecutorWorkerModule } from './modules/executor/executor-worker.module.js'
+import { DeliveryWorkerModule } from './modules/delivery/delivery-worker.module.js'
+import { MaintenanceModule } from './modules/maintenance/maintenance.module.js'
 
 const config = appConfig()
 
@@ -36,6 +38,8 @@ const config = appConfig()
     QueueModule.forRoot(config.redis),
     HttpRetryModule,
     ExecutorWorkerModule,
+    DeliveryWorkerModule,
+    MaintenanceModule,
   ],
 })
 export class WorkerModule {}

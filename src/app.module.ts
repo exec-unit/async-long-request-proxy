@@ -11,20 +11,20 @@ import { ObservabilityModule } from '#libs/observability/index.js'
 import { IdempotencyModule } from '#libs/idempotency/index.js'
 import { TasksModule } from './modules/tasks/tasks.module.js'
 import { ExecutorModule } from './modules/executor/executor.module.js'
+import { DeliveryModule } from './modules/delivery/delivery.module.js'
 import {
   ZodExceptionFilter,
   HttpLoggerMiddleware,
   RequestIdMiddleware,
 } from './common/index.js'
 
-// If any required env var is missing, startup is aborted with a Zod error.
 const config = appConfig()
 
 @Module({
   imports: [
     ConfigProviderModule.forRoot(config),
     DrizzleModule,
-    // Shared Redis client - used by idempotency, rate-limiter, and pub/sub.
+    // forRootAsync re-reads from DI to pick up cluster config that may differ per env.
     RedisModule.forRootAsync({
       inject: [APP_CONFIG],
       useFactory: (cfg: AppConfig) => {
@@ -39,12 +39,12 @@ const config = appConfig()
         }
       },
     }),
-    // BullMQ infrastructure - processors are registered in feature modules.
     QueueModule.forRoot(config.redis),
     ObservabilityModule,
     IdempotencyModule,
     TasksModule,
     ExecutorModule,
+    DeliveryModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: ZodExceptionFilter }],
 })
