@@ -21,6 +21,11 @@ export interface AppConfig {
     enabled: boolean
     capacity: number
   }
+  maintenance: {
+    dataRetentionDays: number
+    timeoutSweeperCron: string
+    dataRetentionCron: string
+  }
 }
 
 /**
@@ -29,8 +34,6 @@ export interface AppConfig {
  * Called once at module load time in AppModule - result passed to ConfigProviderModule.
  */
 export function appConfig(): AppConfig {
-  // Load .env file natively in Node.js >= 20.12.0
-  // We ignore the error if the file doesn't exist (e.g. in production)
   try {
     process.loadEnvFile()
   } catch {
@@ -57,6 +60,11 @@ export function appConfig(): AppConfig {
     rateLimit: {
       enabled: env.RATE_LIMIT_ENABLED,
       capacity: env.RATE_LIMIT_CAPACITY,
+    },
+    maintenance: {
+      dataRetentionDays: env.DATA_RETENTION_DAYS,
+      timeoutSweeperCron: env.TIMEOUT_SWEEPER_CRON,
+      dataRetentionCron: env.DATA_RETENTION_CRON,
     },
   }
 }

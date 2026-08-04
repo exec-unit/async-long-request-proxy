@@ -33,6 +33,10 @@ export const EnvSchema = z
       .default('false')
       .transform((v) => v === 'true'),
     RATE_LIMIT_CAPACITY: z.coerce.number().int().positive().default(1000),
+
+    DATA_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
+    TIMEOUT_SWEEPER_CRON: z.string().default('* * * * *'),
+    DATA_RETENTION_CRON: z.string().default('0 3 * * *'),
   })
   .superRefine((data, ctx) => {
     // Cross-field validation: cluster mode requires node list at startup, not at connection time.
