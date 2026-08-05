@@ -1,7 +1,11 @@
 import { defineConfig } from 'drizzle-kit'
 
+const isProd = process.env.NODE_ENV === 'production'
+
 export default defineConfig({
-  schema: './src/database/drizzle/schema.ts',
+  schema: isProd
+    ? './dist/src/database/drizzle/schema.js'
+    : './src/database/drizzle/schema.ts',
   out: './src/database/drizzle/migrations',
   dialect: 'postgresql',
   dbCredentials: {

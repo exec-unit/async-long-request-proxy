@@ -1,0 +1,38 @@
+# Build artifacts
+node_modules
+dist
+coverage
+*.tsbuildinfo
+.swc/
+
+# Secrets / local config
+.env
+.env.*
+
+# Version control
+.git
+.github
+.husky
+
+# Deploy and infra (not needed in build context)
+deploy
+
+# Tests and benchmarks
+test
+benchmarks
+
+# Editor / tool configs
+.agents
+.vscode
+.idea
+*.md
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Logs and temp
+logs/
+*.log
+tmp/
+temp/
