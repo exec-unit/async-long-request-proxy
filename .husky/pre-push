@@ -1,4 +1,5 @@
 #!/usr/bin/env sh
 
 pnpm typecheck
+pnpm test
 pnpm build

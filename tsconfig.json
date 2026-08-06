@@ -1,5 +1,5 @@
 {
-  "include": ["src/**/*", "libs/**/*"],
+  "include": ["src/**/*", "libs/**/*", "test/**/*", "benchmarks/**/*"],
   "exclude": ["node_modules", "dist"],
   "compilerOptions": {
     "module": "nodenext",

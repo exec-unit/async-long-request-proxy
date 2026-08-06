@@ -1,6 +1,9 @@
 allowBuilds:
   '@scarf/scarf': false
   '@swc/core': false
+  cpu-features: true
   esbuild: true
   msgpackr-extract: true
+  protobufjs: false
+  ssh2: true
   unrs-resolver: false

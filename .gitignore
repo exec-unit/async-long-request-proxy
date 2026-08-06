@@ -64,3 +64,6 @@ Thumbs.db
 .project
 .classpath
 .settings/
+
+# Helm
+deploy/helm/**/charts/
