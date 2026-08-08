@@ -33,6 +33,8 @@ function isRetryableNetworkError(err: unknown): boolean {
   return false
 }
 
+// Adds up to 200ms of random jitter to break retry synchronization
+// when multiple workers fail simultaneously (thundering herd).
 function jitter(): number {
   return Math.floor(Math.random() * 200)
 }
@@ -42,7 +44,7 @@ function computeDelay(attempt: number, baseDelayMs: number, maxDelayMs: number):
 }
 
 function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+  return new Promise((resolve) => setTimeout(resolve, ms).unref())
 }
 
 /**
