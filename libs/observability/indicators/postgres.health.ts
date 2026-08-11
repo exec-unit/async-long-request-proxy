@@ -23,7 +23,7 @@ export class PostgresHealthIndicator {
         }, 2000)
       })
 
-      await Promise.race([this.drizzle.db.execute(sql`SELECT 1`), timeoutPromise])
+      await Promise.race([this.drizzle.getDb().execute(sql`SELECT 1`), timeoutPromise])
 
       return indicator.up()
     } catch (error) {
