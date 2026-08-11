@@ -4,6 +4,9 @@ import { Redis, Cluster } from 'ioredis'
 import type { RedisModuleOptions } from './redis.module.js'
 import { parseClusterNodes } from './cluster-nodes.util.js'
 
+/** Stored constructor options for creating isolated clients on demand. */
+let _storedOptions: RedisModuleOptions | null = null
+
 /**
  * Thin wrapper around ioredis providing the subset of operations
  * used across the proxy (get/set/del/expire/scan).
@@ -18,6 +21,7 @@ export class RedisService implements OnModuleDestroy {
 
   constructor(options: RedisModuleOptions) {
     this.isCluster = options.clusterMode === true
+    _storedOptions = options
 
     if (this.isCluster) {
       if (!options.clusterNodes) {
@@ -46,6 +50,34 @@ export class RedisService implements OnModuleDestroy {
     this.client.on('error', (err: Error) => {
       this.logger.error('Redis connection error', err.stack)
     })
+  }
+
+  /**
+   * Creates a fresh, isolated Redis client with the same connection parameters.
+   * Required by BullMQ workers and SSE subscribers - ioredis enters subscriber-only
+   * mode on `.subscribe()`, and BullMQ workers must not share the business connection.
+   *
+   * Handles both standalone (Redis.duplicate) and Cluster (new Cluster) modes correctly.
+   * Casting to Redis and calling `.duplicate()` silently breaks in cluster mode.
+   */
+  createIsolatedClient(): Redis | Cluster {
+    const opts = _storedOptions
+    if (!opts) throw new Error('RedisService not yet initialized')
+
+    if (this.isCluster) {
+      if (!opts.clusterNodes) {
+        throw new Error('REDIS_CLUSTER_NODES must be provided when clusterMode is true')
+      }
+      return new Cluster(parseClusterNodes(opts.clusterNodes), {
+        redisOptions: {
+          password: opts.password,
+          db: opts.db,
+          maxRetriesPerRequest: null,
+        },
+      })
+    }
+
+    return (this.client as Redis).duplicate()
   }
 
   async get(key: string): Promise<string | null> {
@@ -98,7 +130,6 @@ export class RedisService implements OnModuleDestroy {
 
   private async scanClusterKeys(pattern: string): Promise<string[]> {
     const cluster = this.client as Cluster
-    // Only master nodes hold data - replicas are read-only mirrors.
     const masters = cluster.nodes('master')
     const results = await Promise.all(
       masters.map(async (node) => {

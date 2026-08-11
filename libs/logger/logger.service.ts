@@ -14,9 +14,10 @@ export class AppLogger implements LoggerService {
   constructor(context?: string) {
     this.globalContext = context
     const isProd = process.env['NODE_ENV'] === 'production'
+    const isTest = process.env['JEST_WORKER_ID'] !== undefined
 
     this.logger = pino({
-      level: isProd ? 'info' : 'debug',
+      level: isTest ? 'silent' : isProd ? 'info' : 'debug',
       formatters: {
         level(label) {
           return { level: label }
@@ -27,21 +28,22 @@ export class AppLogger implements LoggerService {
         env: process.env['NODE_ENV'],
       },
       timestamp: pino.stdTimeFunctions.isoTime,
-      ...(!isProd && {
-        transport: {
-          target: new URL('./pretty.transport.js', import.meta.url).href,
-          options: {
-            colorize: true,
-            singleLine: true,
-            levelFirst: true,
-            ignore: 'context,service,env',
-            translateTime: 'SYS:yyyy.mm.dd, HH:MM:ss',
-            // NestJS-like: "INFO [Context] Message"
-            messageFormat: '\x1B[33m[{context}]\x1B[37m {msg}\x1B[39m',
-            customColors: 'info:cyan,debug:blue,warn:yellow,error:red,fatal:bgRed',
+      ...(!isProd &&
+        !isTest && {
+          transport: {
+            target: new URL('./pretty.transport.js', import.meta.url).href,
+            options: {
+              colorize: true,
+              singleLine: true,
+              levelFirst: true,
+              ignore: 'context,service,env',
+              translateTime: 'SYS:yyyy.mm.dd, HH:MM:ss',
+              // NestJS-like: "INFO [Context] Message"
+              messageFormat: '\x1B[33m[{context}]\x1B[37m {msg}\x1B[39m',
+              customColors: 'info:cyan,debug:blue,warn:yellow,error:red,fatal:bgRed',
+            },
           },
-        },
-      }),
+        }),
     })
   }
 

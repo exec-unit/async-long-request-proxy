@@ -15,6 +15,33 @@ import { parseClusterNodes } from '#libs/redis/cluster-nodes.util.js'
 export const QUEUE_CONFIG = Symbol('QUEUE_CONFIG')
 
 /**
+ * Creates an isolated ioredis connection configured specifically for BullMQ.
+ * Used by both the adapter (for queue management) and the processors (for workers).
+ */
+export function createBullMqConnection(config: QueueConfig): Redis | Cluster {
+  if (config.clusterMode) {
+    if (!config.clusterNodes) {
+      throw new Error('REDIS_CLUSTER_NODES must be provided when clusterMode is true')
+    }
+    return new Cluster(parseClusterNodes(config.clusterNodes), {
+      redisOptions: {
+        password: config.password,
+        db: config.db ?? 0,
+        maxRetriesPerRequest: null,
+      },
+    })
+  }
+
+  return new Redis({
+    host: config.host,
+    port: config.port,
+    password: config.password,
+    db: config.db ?? 0,
+    maxRetriesPerRequest: null,
+  })
+}
+
+/**
  * BullMQ-backed IQueueAdapter.
  * Maintains a pool of Queue instances (one per logical queue name).
  * Callers interact only through IQueueAdapter - the BullMQ dependency
@@ -28,37 +55,12 @@ export class BullMqAdapter implements IQueueAdapter, OnModuleInit, OnModuleDestr
   constructor(@Inject(QUEUE_CONFIG) private readonly config: QueueConfig) {}
 
   /**
-   * BullMQ Queue instances manage their own connection pool - each gets a fresh
-   * client so queue-level errors don't cascade across queues.
-   */
-  private createClient(): Redis | Cluster {
-    if (this.config.clusterMode) {
-      if (!this.config.clusterNodes) {
-        throw new Error('REDIS_CLUSTER_NODES must be provided when clusterMode is true')
-      }
-      return new Cluster(parseClusterNodes(this.config.clusterNodes), {
-        redisOptions: {
-          password: this.config.password,
-          db: this.config.db ?? 0,
-        },
-      })
-    }
-
-    return new Redis({
-      host: this.config.host,
-      port: this.config.port,
-      password: this.config.password,
-      db: this.config.db ?? 0,
-    })
-  }
-
-  /**
    * Probes Redis at startup to surface connectivity problems before the app
    * accepts traffic. Throws on failure so NestJS bootstrap is aborted visibly.
    */
   async onModuleInit(): Promise<void> {
     if (this.config.clusterMode) {
-      const cluster = this.createClient() as Cluster
+      const cluster = createBullMqConnection(this.config) as Cluster
       // Suppress the 'error' event - rejection is handled via the awaited ping() below.
       cluster.on('error', () => {})
       try {
@@ -106,7 +108,7 @@ export class BullMqAdapter implements IQueueAdapter, OnModuleInit, OnModuleDestr
     let queue = this.queues.get(name)
     if (!queue) {
       queue = new Queue(name, {
-        connection: this.createClient(),
+        connection: createBullMqConnection(this.config),
         defaultJobOptions: {
           // Retain completed jobs for 1 h for observability;
           // keep last 100 failed for alerting.

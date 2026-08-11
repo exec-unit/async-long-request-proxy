@@ -33,7 +33,7 @@ export class QueueModule {
         BullMqAdapter,
         { provide: QUEUE_ADAPTER, useExisting: BullMqAdapter },
       ],
-      exports: [QUEUE_ADAPTER],
+      exports: [QUEUE_ADAPTER, QUEUE_CONFIG],
     }
   }
 }
