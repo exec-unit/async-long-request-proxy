@@ -6,7 +6,7 @@ import postgres from 'postgres'
 import * as schema from './schema.js'
 import type { AppConfig } from '#src/config/index.js'
 
-/** Convenience type alias — import in repositories instead of repeating the generic. */
+/** Convenience type alias - import in repositories instead of repeating the generic. */
 export type DrizzleDb = PostgresJsDatabase<typeof schema>
 
 /**
@@ -18,12 +18,16 @@ export type DrizzleDb = PostgresJsDatabase<typeof schema>
 export class DrizzleService implements OnApplicationShutdown {
   private readonly logger = new AppLogger(DrizzleService.name)
   private sql!: postgres.Sql
-  db!: DrizzleDb
+  private _db!: DrizzleDb
+
+  /** Returns the initialized Drizzle client. Throws if connect() has not been called. */
+  getDb(): DrizzleDb {
+    return this._db
+  }
 
   async connect(config: AppConfig): Promise<void> {
     this.sql = postgres(config.database.url, { max: 10, idle_timeout: 20 })
 
-    // Verify physical connectivity before the app starts serving traffic.
     try {
       const t = Date.now()
       await this.sql`SELECT 1`
@@ -33,11 +37,11 @@ export class DrizzleService implements OnApplicationShutdown {
       throw error
     }
 
-    this.db = drizzle(this.sql, { schema })
+    this._db = drizzle(this.sql, { schema })
   }
 
   async onApplicationShutdown(): Promise<void> {
-    await this.sql.end()
+    await this.sql.end({ timeout: 0 })
     this.logger.log('PostgreSQL connection pool closed')
   }
 }

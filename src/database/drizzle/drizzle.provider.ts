@@ -9,7 +9,7 @@ export type { DrizzleDb } from './drizzle.service.js'
 
 export const DB_CONNECTION = Symbol('DB_CONNECTION')
 
-/** Convenience decorator — replaces @Inject(DB_CONNECTION) in service constructors. */
+/** Convenience decorator - replaces @Inject(DB_CONNECTION) in service constructors. */
 export const InjectDb = (): ParameterDecorator => Inject(DB_CONNECTION)
 
 export const DrizzleProvider: Provider = {
@@ -17,6 +17,6 @@ export const DrizzleProvider: Provider = {
   inject: [DrizzleService, APP_CONFIG],
   useFactory: async (service: DrizzleService, config: AppConfig): Promise<DrizzleDb> => {
     await service.connect(config)
-    return service.db
+    return service.getDb()
   },
 }
