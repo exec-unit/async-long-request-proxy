@@ -9,6 +9,7 @@ export const EnvSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'production', 'test']).default('production'),
     PORT: z.coerce.number().int().positive().default(8080),
+    PROXY_API_KEY: z.string().optional(),
 
     DATABASE_URL: z
       .string()
