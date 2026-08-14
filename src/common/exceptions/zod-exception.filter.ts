@@ -8,10 +8,6 @@ import {
 } from '@nestjs/common'
 import type { Request, Response } from 'express'
 
-// ---------------------------------------------------------------------------
-// Response shape types
-// ---------------------------------------------------------------------------
-
 interface ValidationIssue {
   field: string
   message: string
@@ -29,10 +25,6 @@ interface ErrorBody {
   /** Present only for 400 Bad Request validation responses. */
   issues?: ValidationIssue[]
 }
-
-// ---------------------------------------------------------------------------
-// Raw Zod issue shape (subset we actually use)
-// ---------------------------------------------------------------------------
 
 interface RawZodIssue {
   code: string
@@ -117,7 +109,8 @@ export class ZodExceptionFilter implements ExceptionFilter {
       return { status: exception.getStatus(), message }
     }
 
-    // ZodError thrown by @ParseBody / @ParseQuery decorators - invalid client input
+    // instanceof ZodError fails across module boundaries when multiple Zod instances
+    // exist in the bundle; constructor.name is the portable alternative.
     if (exception instanceof Error && exception.constructor.name === 'ZodError') {
       const zod = exception as ZodErrorLike
       return {
