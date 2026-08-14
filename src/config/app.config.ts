@@ -5,6 +5,7 @@ export interface AppConfig {
   app: {
     env: Env['NODE_ENV']
     port: number
+    proxyApiKey: string | undefined
   }
   database: {
     url: string
@@ -45,6 +46,7 @@ export function appConfig(): AppConfig {
     app: {
       env: env.NODE_ENV,
       port: env.PORT,
+      proxyApiKey: env.PROXY_API_KEY,
     },
     database: {
       url: env.DATABASE_URL,

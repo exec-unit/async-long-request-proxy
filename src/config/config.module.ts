@@ -4,7 +4,7 @@ import type { AppConfig } from './app.config.js'
 
 /**
  * Registers APP_CONFIG as a global provider.
- * Import once in AppModule — all modules can then inject via @Inject(APP_CONFIG).
+ * Import once in AppModule - all modules can then inject via @Inject(APP_CONFIG).
  */
 @Global()
 @Module({})

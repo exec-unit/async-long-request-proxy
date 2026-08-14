@@ -15,6 +15,10 @@ type SchemaWithMetadata = z.ZodType & { [SKIP_STRICT]?: boolean }
 // Cache strict schemas to avoid recreating them on every request
 const strictSchemaCache = new WeakMap<z.ZodType, z.ZodType>()
 
+/**
+ * Opts a schema out of strict-mode wrapping in @ParseBody.
+ * Use when the endpoint intentionally allows extra fields (e.g. proxied payloads).
+ */
 export function allowUnknown<T extends z.ZodType>(schema: T): T {
   ;(schema as SchemaWithMetadata)[SKIP_STRICT] = true
   return schema
