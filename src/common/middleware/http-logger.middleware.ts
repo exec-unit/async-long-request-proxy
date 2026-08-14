@@ -2,7 +2,6 @@ import { AppLogger } from '#libs/logger/logger.service.js'
 import { Injectable, type NestMiddleware } from '@nestjs/common'
 import type { NextFunction, Request, Response } from 'express'
 
-// ANSI color codes for status ranges, used only in dev
 const STATUS_COLORS: Record<string, string> = {
   '2': '\x1B[32m',
   '3': '\x1B[36m',
@@ -60,12 +59,12 @@ export class HttpLoggerMiddleware implements NestMiddleware {
       }
     }
 
-    // finish: response fully sent (success or error handled by NestJS)
     res.on('finish', () => {
       logRequest('finish')
     })
 
-    // close: socket destroyed before response completed (client abort / timeout)
+    // close fires on both normal finish and client abort;
+    // writableEnded distinguishes them without double-logging.
     res.on('close', () => {
       if (!res.writableEnded) {
         logRequest('aborted')
