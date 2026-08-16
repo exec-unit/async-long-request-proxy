@@ -1,7 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { Observable } from 'rxjs'
 import type { MessageEvent } from '@nestjs/common'
-import type { Redis } from 'ioredis'
 import { RedisService } from '#libs/redis/index.js'
 import { TasksRepository } from '../tasks/tasks.repository.js'
 import { EventsRepository } from './events.repository.js'
@@ -14,6 +13,10 @@ const TERMINAL_EVENT_TYPES = new Set<TaskEventType>(['completed', 'failed', 'can
  * ALB idle timeout) that would otherwise silently drop quiet SSE connections.
  */
 const HEARTBEAT_INTERVAL_MS = 25_000
+
+// Cap for events buffered while history is loading from DB.
+// If exceeded, the history query is too slow and the client should reconnect.
+const MAX_LIVE_BUFFER_SIZE = 500
 
 const HEARTBEAT_EVENT: MessageEvent = { data: '', type: 'ping' }
 
@@ -63,13 +66,15 @@ export class SseService {
       let highestHistorySeq = afterSeq
       const liveBuffer: TaskEventSelect[] = []
 
-      // Dedicated subscriber client — isolated from the shared business connection.
-      const subClient = (this.redis.client as Redis).duplicate()
+      const subClient = this.redis.createIsolatedClient()
       const channel = `task:${taskId}`
 
       void subClient.subscribe(channel, (err) => {
         if (err) {
           this.logger.error(`Failed to subscribe to channel ${channel}: ${err.message}`)
+          // Explicitly close the orphaned client - the teardown function won't
+          // be called since subscriber.error() terminates the Observable immediately.
+          void subClient.quit()
           subscriber.error(err)
         }
       })
@@ -80,6 +85,15 @@ export class SseService {
           const event = JSON.parse(rawMessage) as TaskEventSelect
 
           if (!historyLoaded) {
+            if (liveBuffer.length >= MAX_LIVE_BUFFER_SIZE) {
+              this.logger.error(
+                `SSE liveBuffer overflow for taskId=${taskId}: history query is too slow, closing stream`,
+              )
+              isDone = true
+              void subClient.quit()
+              subscriber.error(new Error('SSE buffer overflow'))
+              return
+            }
             liveBuffer.push(event)
             return
           }
@@ -125,17 +139,20 @@ export class SseService {
           }
 
           historyLoaded = true
+
           for (const event of liveBuffer) {
             if (event.seq > highestHistorySeq) {
               highestHistorySeq = event.seq
               subscriber.next(toMessageEvent(event))
               if (TERMINAL_EVENT_TYPES.has(event.eventType)) {
                 isDone = true
+                liveBuffer.length = 0
                 subscriber.complete()
                 return
               }
             }
           }
+          liveBuffer.length = 0
         })
         .catch((err: unknown) => {
           if (!isDone) subscriber.error(err)
