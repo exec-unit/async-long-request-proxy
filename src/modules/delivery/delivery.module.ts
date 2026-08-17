@@ -7,7 +7,7 @@ import { StreamController } from './stream.controller.js'
 /**
  * API-side module for the Delivery domain.
  * Registers the SSE stream endpoint and its dependencies.
- * Intentionally excludes WebhookProcessor — that belongs to the Worker process.
+ * Intentionally excludes WebhookProcessor - that belongs to the Worker process.
  */
 @Module({
   controllers: [StreamController],
