@@ -39,7 +39,7 @@ export type TaskEventPayload =
  * Design decisions:
  * - `seq` is a monotonic per-task counter used as the SSE Last-Event-ID.
  *   Clients reconnecting with Last-Event-ID replay missed events cheaply.
- * - Table is intentionally append-only — no updates, no deletes during task lifetime.
+ * - Table is intentionally append-only - no updates, no deletes during task lifetime.
  * - Future: partition by created_at to enable cheap DROP PARTITION for old data.
  */
 export const taskEvents = pgTable(

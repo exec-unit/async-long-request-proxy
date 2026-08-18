@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common'
 import { TasksRepository } from '../tasks/tasks.repository.js'
+import { EventsRepository } from './events.repository.js'
 import { WebhookProcessor } from './workers/webhook.processor.js'
 
 /**
@@ -9,6 +10,6 @@ import { WebhookProcessor } from './workers/webhook.processor.js'
  * worker process lean and free of any HTTP-serving infrastructure.
  */
 @Module({
-  providers: [WebhookProcessor, TasksRepository],
+  providers: [WebhookProcessor, TasksRepository, EventsRepository],
 })
 export class DeliveryWorkerModule {}

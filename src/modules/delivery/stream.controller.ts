@@ -7,15 +7,23 @@ import {
   Param,
   ParseUUIDPipe,
   Sse,
+  UseGuards,
 } from '@nestjs/common'
-import { ApiTags, ApiOperation, ApiResponse, ApiHeader } from '@nestjs/swagger'
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiHeader,
+  ApiSecurity,
+} from '@nestjs/swagger'
 import type { MessageEvent } from '@nestjs/common'
 import type { Observable } from 'rxjs'
 import { SseService } from './sse.service.js'
+import { ApiKeyGuard } from '#src/common/index.js'
 
 /**
  * Parses the `Last-Event-ID` header into a non-negative integer sequence number.
- * Falls back to 0 (replay all) on missing or malformed values — this is
+ * Falls back to 0 (replay all) on missing or malformed values - this is
  * intentionally forgiving: a wrong seq causes extra data, not data loss.
  */
 function parseLastEventId(raw: string | undefined): number {
@@ -29,17 +37,20 @@ function parseLastEventId(raw: string | undefined): number {
  * Uses event sourcing: clients reconnecting with `Last-Event-ID` receive all missed events.
  */
 @ApiTags('tasks')
+@ApiSecurity('api-key')
 @Controller('tasks')
+@UseGuards(ApiKeyGuard)
 export class StreamController {
   constructor(private readonly sseService: SseService) {}
 
   /**
    * Opens a persistent SSE connection. Replays missed events from `Last-Event-ID`,
    * then delivers live updates until the task reaches a terminal state.
+   *
+   * Headers disable reverse-proxy and CDN buffering that would silently break streaming.
    */
   @Get(':id/stream')
   @Sse()
-  // Prevent reverse proxies and CDNs from buffering the SSE response.
   @Header('X-Accel-Buffering', 'no')
   @Header('Cache-Control', 'no-cache')
   @ApiOperation({ summary: 'Open SSE stream for real-time task events' })
