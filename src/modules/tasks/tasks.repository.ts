@@ -1,15 +1,18 @@
 import { Injectable } from '@nestjs/common'
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { tasks } from './schemas/tasks.sql.js'
 import type { TaskInsert, TaskSelect, TaskStatus } from './schemas/tasks.sql.js'
-import { taskEvents } from '../delivery/schemas/events.sql.js'
-import type { TaskEventSelect } from '../delivery/schemas/events.sql.js'
 import type { DrizzleDb } from '#src/database/drizzle/drizzle.provider.js'
 import { InjectDb } from '#src/database/drizzle/drizzle.provider.js'
+import { EventsRepository } from '../delivery/events.repository.js'
+import type { TaskEventSelect } from '../delivery/schemas/events.sql.js'
 
 @Injectable()
 export class TasksRepository {
-  constructor(@InjectDb() private readonly db: DrizzleDb) {}
+  constructor(
+    @InjectDb() private readonly db: DrizzleDb,
+    private readonly eventsRepo: EventsRepository,
+  ) {}
 
   async insert(dto: TaskInsert): Promise<TaskSelect> {
     const rows = await this.db.insert(tasks).values(dto).returning()
@@ -60,8 +63,8 @@ export class TasksRepository {
 
   /**
    * Atomically transitions a task to CANCELLED and inserts a 'cancelled' event.
-   * Eliminates the risk of a race condition or partial failure leaving the state
-   * machine and event log out of sync.
+   * Delegates seq assignment to EventsRepository.insertEventInTx to avoid
+   * duplicating the advisory lock + MAX(seq) pattern.
    */
   async cancelTask(
     id: string,
@@ -77,25 +80,12 @@ export class TasksRepository {
       const task = updatedTasks[0]
       if (!task) return null
 
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtext('task_events'), hashtext(${id}))`,
-      )
-      const [seqRow] = await tx
-        .select({ nextSeq: sql<number>`COALESCE(MAX(${taskEvents.seq}), 0) + 1` })
-        .from(taskEvents)
-        .where(eq(taskEvents.taskId, id))
+      const event = await this.eventsRepo.insertEventInTx(tx, {
+        taskId: id,
+        eventType: 'cancelled',
+      })
 
-      const [event] = await tx
-        .insert(taskEvents)
-        .values({
-          taskId: id,
-          seq: seqRow?.nextSeq ?? 1,
-          eventType: 'cancelled',
-          payload: {},
-        })
-        .returning()
-
-      return { task, event: event as TaskEventSelect }
+      return { task, event }
     })
   }
 }
