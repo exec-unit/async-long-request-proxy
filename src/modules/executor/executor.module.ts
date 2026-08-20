@@ -7,7 +7,7 @@ import { DeliveryModule } from '../delivery/delivery.module.js'
 
 /**
  * Imports DeliveryModule to share the EventsRepository singleton
- * already registered there — avoids a duplicate provider instance
+ * already registered there - avoids a duplicate provider instance
  * that would break NestJS DI scope semantics.
  */
 @Module({
