@@ -1,5 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
-import { Inject } from '@nestjs/common'
+import { Injectable, Inject, Logger } from '@nestjs/common'
 import { QUEUE_ADAPTER } from '#libs/queue/index.js'
 import type { IQueueAdapter } from '#libs/queue/index.js'
 import { RedisService } from '#libs/redis/index.js'
@@ -23,13 +22,27 @@ export class ExecutorService {
    * Handles the executor's final result push.
    * Transitions PROCESSING → COMPLETED or FAILED, persists the event,
    * publishes to Pub/Sub (for SSE), and optionally enqueues a webhook delivery.
+   *
+   * Returns early (no-op) if the task is no longer in PROCESSING state -
+   * e.g. it was expired by the timeout sweeper while the executor was still running.
    */
   async submitResult(task: TaskSelect, dto: SubmitResultDto): Promise<void> {
     if (dto.status === 'completed') {
-      await this.tasksRepo.updateStatus(task.id, 'PROCESSING', 'COMPLETED', {
-        result: dto.result,
-        completedAt: new Date(),
-      })
+      const updated = await this.tasksRepo.updateStatus(
+        task.id,
+        'PROCESSING',
+        'COMPLETED',
+        {
+          result: dto.result,
+          completedAt: new Date(),
+        },
+      )
+      if (!updated) {
+        this.logger.warn(
+          `Task ${task.id} result ignored: task is no longer in PROCESSING state`,
+        )
+        return
+      }
       const event = await this.eventsRepo.insertEvent({
         taskId: task.id,
         eventType: 'completed',
@@ -37,10 +50,16 @@ export class ExecutorService {
       })
       await this.publish(task.id, event)
     } else {
-      await this.tasksRepo.updateStatus(task.id, 'PROCESSING', 'FAILED', {
+      const updated = await this.tasksRepo.updateStatus(task.id, 'PROCESSING', 'FAILED', {
         error: dto.error,
         completedAt: new Date(),
       })
+      if (!updated) {
+        this.logger.warn(
+          `Task ${task.id} failure ignored: task is no longer in PROCESSING state`,
+        )
+        return
+      }
       const event = await this.eventsRepo.insertEvent({
         taskId: task.id,
         eventType: 'failed',
