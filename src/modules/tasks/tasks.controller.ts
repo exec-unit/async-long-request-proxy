@@ -9,11 +9,12 @@ import {
   Post,
   Req,
   InternalServerErrorException,
+  UseGuards,
 } from '@nestjs/common'
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
+import { ApiTags, ApiOperation, ApiResponse, ApiSecurity } from '@nestjs/swagger'
 import type { Request } from 'express'
 import { TasksService } from './tasks.service.js'
-import { ParseBody, ApiZodResponse } from '#src/common/index.js'
+import { ParseBody, ApiZodResponse, ApiKeyGuard } from '#src/common/index.js'
 import {
   CreateTaskSchema,
   TaskCreatedResponseSchema,
@@ -26,7 +27,9 @@ import type {
 } from './dto/tasks.dto.js'
 
 @ApiTags('tasks')
+@ApiSecurity('api-key')
 @Controller('tasks')
+@UseGuards(ApiKeyGuard)
 export class TasksController {
   constructor(private readonly tasksService: TasksService) {}
 
@@ -56,16 +59,14 @@ export class TasksController {
     return this.tasksService.create(dto, baseUrl)
   }
 
-  /** Returns the current task snapshot including status, result, and progress. */
+  /** Returns the current task snapshot. Strips callbackToken - it is an internal secret. */
   @Get(':id')
   @ApiOperation({ summary: 'Get task status' })
   @ApiZodResponse(HttpStatus.OK, TaskResponseSchema, 'Returns the task snapshot')
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Task not found' })
   async getStatus(@Param('id', ParseUUIDPipe) id: string): Promise<TaskResponseDto> {
     const task = await this.tasksService.getStatus(id)
-    // Never expose the callbackToken to clients
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { callbackToken, ...publicTask } = task
+    const { callbackToken: _callbackToken, ...publicTask } = task
     return publicTask
   }
 
