@@ -1,10 +1,15 @@
-import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common'
 import { randomUUID } from 'node:crypto'
 import { TasksRepository } from './tasks.repository.js'
 import { IdempotencyService } from '#libs/idempotency/index.js'
 import { QUEUE_ADAPTER } from '#libs/queue/index.js'
 import type { IQueueAdapter } from '#libs/queue/index.js'
-import { Inject } from '@nestjs/common'
 import { RedisService } from '#libs/redis/index.js'
 import type { CreateTaskDto, TaskCreatedResponseDto } from './dto/tasks.dto.js'
 import type { TaskSelect } from './schemas/tasks.sql.js'
@@ -17,8 +22,12 @@ const DISPATCH_QUEUE = 'dispatch'
 
 /**
  * Orchestrates task creation with idempotency guarantees.
- * Flow: 1. Redis lock -> 2. Postgres INSERT -> 3. Enqueue dispatch -> 4. Commit lock.
+ * Flow: 1. Redis lock → 2. Postgres INSERT → 3. Enqueue dispatch → 4. Commit lock.
  * Crashes between 2 and 4 leave slot in PENDING until TTL expires, but task still runs.
+ *
+ * Known limitation: steps 2 and 3 are not in the same transaction (no transactional outbox).
+ * A process crash after INSERT but before enqueue leaves an orphaned PENDING task with no job.
+ * The timeout sweeper will eventually fail it, but the window depends on TIMEOUT_SWEEPER_CRON.
  */
 @Injectable()
 export class TasksService {
@@ -110,7 +119,14 @@ export class TasksService {
     }
 
     if (idempotencyKey) {
-      await this.idempotency.commitResult(idempotencyKey, task.id)
+      // Not critical: task is already created and enqueued. Slot will expire
+      // naturally via TTL if this fails. Do not block the response to the client.
+      await this.idempotency.commitResult(idempotencyKey, task.id).catch((e: unknown) => {
+        this.logger.error(
+          `Failed to commit idempotency slot for key=${idempotencyKey}, taskId=${task.id}`,
+          e,
+        )
+      })
     }
 
     this.logger.log(`Task created: id=${task.id} type=${task.type}`)

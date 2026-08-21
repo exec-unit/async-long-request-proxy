@@ -1,11 +1,13 @@
 import {
+  Inject,
   Injectable,
   Logger,
   type OnModuleDestroy,
   type OnModuleInit,
 } from '@nestjs/common'
 import { Worker } from 'bullmq'
-import { RedisService } from '#libs/redis/index.js'
+import { QUEUE_CONFIG, createBullMqConnection } from '#libs/queue/index.js'
+import type { QueueConfig } from '#libs/queue/index.js'
 import { HttpRetryService, NonRetryableError } from '#libs/http-retry/index.js'
 import { TasksRepository } from '../../tasks/tasks.repository.js'
 
@@ -26,22 +28,27 @@ export class CancelProcessor implements OnModuleInit, OnModuleDestroy {
   private worker!: Worker
 
   constructor(
-    private readonly redis: RedisService,
+    @Inject(QUEUE_CONFIG) private readonly config: QueueConfig,
     private readonly tasksRepo: TasksRepository,
     private readonly httpRetry: HttpRetryService,
   ) {}
 
   onModuleInit(): void {
-    this.worker = new Worker('cancel', (job) => this.process(job.data as CancelJobData), {
-      connection: (this.redis.client as import('ioredis').Redis).duplicate(),
-    })
+    this.worker = new Worker(
+      'cancel',
+      async (job) => this.process(job.data as CancelJobData),
+      { connection: createBullMqConnection(this.config), concurrency: 5 },
+    )
 
-    this.logger.log('Cancel worker started')
+    this.worker.on('failed', (job, err) => {
+      this.logger.error(
+        `Job ${job?.id ?? 'unknown'} on queue "cancel" failed: ${String(err)}`,
+      )
+    })
   }
 
   async onModuleDestroy(): Promise<void> {
     await this.worker.close()
-    this.logger.log('Cancel worker closed')
   }
 
   private async process({ taskId }: CancelJobData): Promise<void> {
