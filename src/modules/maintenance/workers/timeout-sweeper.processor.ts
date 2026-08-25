@@ -3,9 +3,11 @@ import {
   Logger,
   type OnModuleDestroy,
   type OnModuleInit,
+  Inject,
 } from '@nestjs/common'
 import { Worker, Queue } from 'bullmq'
-import type { Redis } from 'ioredis'
+import { QUEUE_CONFIG, createBullMqConnection } from '#libs/queue/index.js'
+import type { QueueConfig } from '#libs/queue/index.js'
 import { RedisService } from '#libs/redis/index.js'
 import { InjectConfig } from '#src/config/index.js'
 import type { AppConfig } from '#src/config/index.js'
@@ -13,6 +15,7 @@ import { MaintenanceRepository } from '../maintenance.repository.js'
 
 /** Queue name - also used as the repeatable job key prefix in BullMQ. */
 const QUEUE_NAME = 'maintenance-timeout-sweep'
+const SWEEP_BATCH_SIZE = 500
 
 /**
  * Repeatable job: scans for PROCESSING tasks past their `expiresAt` deadline
@@ -31,22 +34,23 @@ export class TimeoutSweeperProcessor implements OnModuleInit, OnModuleDestroy {
   private queue!: Queue
 
   constructor(
+    @Inject(QUEUE_CONFIG) private readonly queueConfig: QueueConfig,
     private readonly redis: RedisService,
     private readonly maintenanceRepo: MaintenanceRepository,
     @InjectConfig() private readonly config: AppConfig,
   ) {}
 
   onModuleInit(): void {
-    // Queue and Worker each require their own Redis connection; both are duplicated
-    // from the same base client to avoid chaining duplicates.
-    const baseClient = this.redis.client as Redis
-    this.queue = new Queue(QUEUE_NAME, { connection: baseClient.duplicate() })
+    this.queue = new Queue(QUEUE_NAME, {
+      connection: createBullMqConnection(this.queueConfig),
+    })
     this.worker = new Worker(QUEUE_NAME, () => this.process(), {
-      connection: baseClient.duplicate(),
+      connection: createBullMqConnection(this.queueConfig),
       concurrency: 1,
     })
 
-    // upsertJobScheduler is idempotent: updating the cron is a no-op if unchanged.
+    // upsertJobScheduler is idempotent across replicas: multiple workers
+    // calling this with the same key elect a single scheduled runner.
     void this.queue
       .upsertJobScheduler(
         'timeout-sweep',
@@ -81,12 +85,11 @@ export class TimeoutSweeperProcessor implements OnModuleInit, OnModuleDestroy {
 
   private async process(): Promise<void> {
     let totalExpired = 0
-    const BATCH_SIZE = 500
 
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     while (true) {
       const { expiredCount, events } =
-        await this.maintenanceRepo.expireTimedOutTasksBatch(BATCH_SIZE)
+        await this.maintenanceRepo.expireTimedOutTasksBatch(SWEEP_BATCH_SIZE)
 
       if (expiredCount === 0) {
         break
@@ -94,9 +97,7 @@ export class TimeoutSweeperProcessor implements OnModuleInit, OnModuleDestroy {
 
       totalExpired += expiredCount
 
-      // The DB insertion is already handled atomically in the repository transaction.
-      // We only need to publish to Redis for live SSE clients.
-      // This is fast and does not exhaust the Postgres connection pool.
+      // DB insertions are handled in the repository transaction; publish to notify live SSE clients.
       await Promise.allSettled(
         events.map(async (event) => {
           try {
