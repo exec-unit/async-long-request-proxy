@@ -3,6 +3,7 @@ import { appConfig } from '#src/config/index.js'
 import { ConfigProviderModule } from '#src/config/index.js'
 import { APP_CONFIG } from '#src/config/index.js'
 import type { AppConfig } from '#src/config/index.js'
+import { buildRedisOptions } from '#src/config/redis.factory.js'
 import { DrizzleModule } from './database/drizzle/drizzle.module.js'
 import { RedisModule } from '#libs/redis/index.js'
 import { QueueModule } from '#libs/queue/index.js'
@@ -23,17 +24,7 @@ const config = appConfig()
     DrizzleModule,
     RedisModule.forRootAsync({
       inject: [APP_CONFIG],
-      useFactory: (cfg: AppConfig) => {
-        const { host, port, password, db, clusterMode, clusterNodes } = cfg.redis
-        return {
-          host,
-          port,
-          ...(password ? { password } : {}),
-          db,
-          clusterMode,
-          ...(clusterNodes ? { clusterNodes } : {}),
-        }
-      },
+      useFactory: (cfg: AppConfig) => buildRedisOptions(cfg),
     }),
     QueueModule.forRoot(config.redis),
     HttpRetryModule,

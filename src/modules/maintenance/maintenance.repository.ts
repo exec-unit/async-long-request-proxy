@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { eq, lt, and, inArray, sql } from 'drizzle-orm'
+import { lt, and, inArray, sql } from 'drizzle-orm'
 import { InjectDb } from '#src/database/drizzle/drizzle.provider.js'
 import type { DrizzleDb } from '#src/database/drizzle/drizzle.provider.js'
 import { tasks } from '../tasks/schemas/tasks.sql.js'
@@ -46,8 +46,7 @@ export class MaintenanceRepository {
     }
 
     return this.db.transaction(async (tx) => {
-      // The subquery grabs a chunk of IDs exclusively without waiting for locks.
-      // Includes both PENDING and PROCESSING to sweep orphaned tasks.
+      // SKIP LOCKED prevents waiting on rows held by a concurrent sweep or cancellation.
       const expiredIdsQuery = tx
         .select({ id: tasks.id })
         .from(tasks)
@@ -65,33 +64,40 @@ export class MaintenanceRepository {
           error: timeoutError,
         })
         .where(inArray(tasks.id, expiredIdsQuery))
-        .returning({ id: tasks.id, error: tasks.error })
+        .returning({ id: tasks.id })
 
       if (expired.length === 0) {
         return { expiredCount: 0, events: [] }
       }
 
-      const eventsToInsert = []
-      for (const task of expired) {
-        await tx.execute(
-          sql`SELECT pg_advisory_xact_lock(hashtext('task_events'), hashtext(${task.id}))`,
-        )
-        const [seqRow] = await tx
-          .select({ nextSeq: sql<number>`COALESCE(MAX(${taskEvents.seq}), 0) + 1` })
-          .from(taskEvents)
-          .where(eq(taskEvents.taskId, task.id))
+      const expiredIds = expired.map((t) => t.id)
 
-        eventsToInsert.push({
-          taskId: task.id,
-          seq: seqRow?.nextSeq ?? 1,
-          eventType: 'failed' as const,
-          payload: { error: timeoutError },
-        })
-      }
+      // Bulk-insert events using a single statement with ROW_NUMBER() OVER (PARTITION BY task_id)
+      // to assign monotonically increasing seq per task without per-row advisory locks.
+      // Trades strict ordering guarantees (already ensured by the preceding FOR UPDATE) for
+      // throughput on large expiration batches.
+      const uuidArray = sql`ARRAY[${sql.join(
+        expiredIds.map((id) => sql`${id}::uuid`),
+        sql`, `,
+      )}]`
 
       const insertedEvents = await tx
         .insert(taskEvents)
-        .values(eventsToInsert)
+        .select(
+          sql`
+            SELECT
+              gen_random_uuid() AS id,
+              t.task_id,
+              COALESCE(
+                (SELECT MAX(seq) FROM task_events WHERE task_id = t.task_id),
+                0
+              ) + ROW_NUMBER() OVER (PARTITION BY t.task_id ORDER BY t.task_id) AS seq,
+              'failed' AS event_type,
+              ${JSON.stringify({ error: timeoutError })}::jsonb AS payload,
+              NOW() AS created_at
+            FROM unnest(${uuidArray}) AS t(task_id)
+          `,
+        )
         .returning()
 
       return {

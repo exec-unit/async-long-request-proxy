@@ -3,9 +3,11 @@ import {
   Logger,
   type OnModuleDestroy,
   type OnModuleInit,
+  Inject,
 } from '@nestjs/common'
 import { Worker, Queue } from 'bullmq'
-import { RedisService } from '#libs/redis/index.js'
+import { QUEUE_CONFIG, createBullMqConnection } from '#libs/queue/index.js'
+import type { QueueConfig } from '#libs/queue/index.js'
 import { InjectConfig } from '#src/config/index.js'
 import type { AppConfig } from '#src/config/index.js'
 import { MaintenanceRepository } from '../maintenance.repository.js'
@@ -25,16 +27,17 @@ export class DataRetentionProcessor implements OnModuleInit, OnModuleDestroy {
   private queue!: Queue
 
   constructor(
-    private readonly redis: RedisService,
+    @Inject(QUEUE_CONFIG) private readonly queueConfig: QueueConfig,
     private readonly maintenanceRepo: MaintenanceRepository,
     @InjectConfig() private readonly config: AppConfig,
   ) {}
 
   onModuleInit(): void {
-    const baseClient = this.redis.client as import('ioredis').Redis
-    this.queue = new Queue(QUEUE_NAME, { connection: baseClient.duplicate() })
+    this.queue = new Queue(QUEUE_NAME, {
+      connection: createBullMqConnection(this.queueConfig),
+    })
     this.worker = new Worker(QUEUE_NAME, () => this.process(), {
-      connection: baseClient.duplicate(),
+      connection: createBullMqConnection(this.queueConfig),
       concurrency: 1,
     })
 
