@@ -1,0 +1,47 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "async-long-request-proxy.fullname" . }}-migrate
+  labels:
+    {{- include "async-long-request-proxy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        {{- include "async-long-request-proxy.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              # Extract host and port from DATABASE_URL
+              # DATABASE_URL format: postgresql://user:pass@host:port/db
+              DB_HOST=$(echo "$DATABASE_URL" | sed 's|.*@\(.*\):.*|\1|')
+              DB_PORT=$(echo "$DATABASE_URL" | sed 's|.*:\([0-9]*\)/.*|\1|')
+              echo "Waiting for PostgreSQL at $DB_HOST:$DB_PORT..."
+              until pg_isready -h "$DB_HOST" -p "$DB_PORT"; do
+                echo "PostgreSQL not ready yet, retrying in 2s..."
+                sleep 2
+              done
+              echo "PostgreSQL is ready!"
+          envFrom:
+            - secretRef:
+                name: {{ include "async-long-request-proxy.fullname" . }}
+      containers:
+        - name: migrate
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["./node_modules/.bin/drizzle-kit", "migrate"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "async-long-request-proxy.fullname" . }}
+            - secretRef:
+                name: {{ .Values.secret.existingSecret | default (include "async-long-request-proxy.fullname" .) }}

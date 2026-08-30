@@ -1,0 +1,37 @@
+# Local development overrides for Helm
+# Use this with `helm install proxy ./deploy/helm/async-long-request-proxy -f values-local.yaml`
+
+fullnameOverride: 'async-proxy'
+
+image:
+  tag: 'local'
+
+postgresql:
+  enabled: true
+  auth:
+    username: postgres
+    password: postgres_password
+    database: async_proxy
+
+redis:
+  enabled: true
+  auth:
+    enabled: true
+    password: redis_password
+  architecture: standalone
+
+secret:
+  # When using the bitnami subcharts, they are exposed at these local cluster addresses
+  databaseUrl: 'postgresql://postgres:postgres_password@{{ .Release.Name }}-postgresql:5432/async_proxy'
+  redisHost: '{{ .Release.Name }}-redis-master'
+  redisPort: '6379'
+  redisPassword: 'redis_password'
+  proxyApiKey: 'local-dev-secret'
+
+api:
+  replicaCount: 1
+
+worker:
+  replicaCount: 1
+  keda:
+    enabled: false

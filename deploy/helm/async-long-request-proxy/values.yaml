@@ -1,0 +1,63 @@
+# Default values for async-long-request-proxy.
+# Override per environment with -f values-<env>.yaml or --set key=value.
+# For local development see values-local.yaml.
+
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  repository: ghcr.io/exec-unit/async-long-request-proxy
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+config:
+  nodeEnv: "production"
+  port: 8080
+
+# Supply secrets via CI/CD (--set) or use `existingSecret` for Vault / External Secrets Operator integration.
+secret:
+  existingSecret: ""
+  databaseUrl: ""
+  redisHost: ""
+  redisPort: "6379"
+  redisPassword: ""
+  # Leave empty to disable API key protection (fail-open).
+  proxyApiKey: ""
+
+api:
+  replicaCount: 2
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 80
+
+worker:
+  replicaCount: 1
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  resources:
+    limits:
+      cpu: 500m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  keda:
+    enabled: true
+    minReplicaCount: 1
+    maxReplicaCount: 10
+    redisQueueLength: 50
