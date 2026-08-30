@@ -1,0 +1,82 @@
+x-app: &app
+  build:
+    context: ..
+    dockerfile: deploy/docker/Dockerfile
+  image: async-long-request-proxy:local
+  env_file:
+    - ../.env
+  environment:
+    - NODE_ENV=production
+
+services:
+  api:
+    <<: *app
+    container_name: async-proxy-api
+    ports:
+      - '127.0.0.1:8080:8080'
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    command: ['node', '--enable-source-maps', 'dist/src/main.js']
+    restart: unless-stopped
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'wget --spider -q http://127.0.0.1:8080/v1/health/live || exit 1']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    <<: *app
+    container_name: async-proxy-worker
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ['node', '--enable-source-maps', 'dist/src/worker.js']
+    restart: unless-stopped
+
+  migrate:
+    <<: *app
+    container_name: async-proxy-migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ['sh', '-c', './node_modules/.bin/drizzle-kit migrate']
+    restart: 'no'
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: async-proxy-postgres
+    env_file:
+      - .env.infra
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d async_proxy']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: async-proxy-redis
+    env_file:
+      - .env.infra
+    command: ['sh', '-c', 'redis-server --requirepass "$$REDIS_PASSWORD"']
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  redis_data:

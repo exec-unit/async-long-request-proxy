@@ -1,0 +1,26 @@
+.DS_Store
+# Common VCS dirs
+.git/
+.gitignore
+.bzr/
+.bzrignore
+.hg/
+.hgignore
+.svn/
+# Common backup files
+*.swp
+*.bak
+*.tmp
+*.orig
+*~
+# Various IDEs
+.project
+.idea/
+*.tmproj
+.vscode/
+# Local overrides
+values-local.yaml
+# Example and env files should not be packaged
+*.example
+*.env*
+node_modules/

@@ -1,0 +1,27 @@
+{{- if .Values.worker.keda.enabled }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "async-long-request-proxy.fullname" . }}-worker
+  labels:
+    {{- include "async-long-request-proxy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "async-long-request-proxy.fullname" . }}-worker
+  minReplicaCount: {{ .Values.worker.keda.minReplicaCount }}
+  maxReplicaCount: {{ .Values.worker.keda.maxReplicaCount }}
+  triggers:
+    - type: redis
+      metadata:
+        # Assumes Redis is accessible via the REDIS_HOST inside the cluster.
+        addressFromEnv: REDIS_HOST
+        portFromEnv: REDIS_PORT
+        passwordFromEnv: REDIS_PASSWORD
+        # We check the length of BullMQ's wait list for the webhook queue.
+        # Format: bull:{QueueName}:wait
+        listName: bull:webhook:wait
+        listLength: {{ .Values.worker.keda.redisQueueLength | quote }}
+{{- end }}
