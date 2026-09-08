@@ -7,3 +7,5 @@ allowBuilds:
   protobufjs: false
   ssh2: true
   unrs-resolver: false
+overrides:
+  multer: 2.3.0
