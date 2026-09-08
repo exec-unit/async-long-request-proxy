@@ -99,9 +99,21 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
-          pnpm exec conventional-changelog -p conventionalcommits -r 1 -n ./changelog.config.mjs --stdout | \
-            gh release create "${GITHUB_REF_NAME}" \
+
+          # Find the previous tag matching v*.*.*, looking at ancestors of HEAD
+          PREV_TAG=$(git describe --tags --abbrev=0 --match "v*.*.*" HEAD^ 2>/dev/null || true)
+
+          if [ -z "$PREV_TAG" ]; then
+            echo "No previous tag found. Generating changelog from the beginning to HEAD."
+            FIRST_COMMIT=$(git rev-list --max-parents=0 HEAD | tail -n 1)
+            pnpm exec conventional-changelog -p conventionalcommits -n ./changelog.config.mjs --from "$FIRST_COMMIT" --to HEAD -o RELEASE_NOTES.md
+          else
+            echo "Previous tag found: $PREV_TAG. Generating changelog from $PREV_TAG to HEAD."
+            pnpm exec conventional-changelog -p conventionalcommits -n ./changelog.config.mjs --from "$PREV_TAG" --to HEAD -o RELEASE_NOTES.md
+          fi
+
+          gh release create "${GITHUB_REF_NAME}" \
             async-long-request-proxy-${TAG_VERSION}.tgz \
             --verify-tag \
             --title "Release ${GITHUB_REF_NAME}" \
-            --notes-file -
+            --notes-file RELEASE_NOTES.md
